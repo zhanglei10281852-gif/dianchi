@@ -68,7 +68,9 @@ func (m *ManifestService) Move(ctx context.Context, p auth.Principal, id string,
 	if !ok || v.TenantID != p.TenantID {
 		return apperr.New(apperr.NotFound, "manifest missing")
 	}
-	current := v
+	if err := manifest.ValidateMove(v, target); err != nil {
+		return apperr.Wrap(apperr.Conflict, "manifest transition", err)
+	}
 	v.Status = target
 	now := time.Now().UTC()
 	if target == manifest.Sealed {
@@ -78,9 +80,6 @@ func (m *ManifestService) Move(ctx context.Context, p auth.Principal, id string,
 		v.ReceivedAt = &now
 	}
 	m.data[id] = v
-	if err := manifest.ValidateMove(current, target); err != nil {
-		return apperr.Wrap(apperr.Conflict, "manifest transition", err)
-	}
 	return nil
 }
 func (m *ManifestService) Get(ctx context.Context, p auth.Principal, id string) (manifest.Manifest, error) {

@@ -87,6 +87,31 @@ func TestEnergyReadingsWithSameLotIDStayInTenant(t *testing.T) {
 	}
 }
 
+func TestManifestIllegalTransitionLeavesStateUnchanged(t *testing.T) {
+	op, _, _ := boundaryPrincipals()
+	manifests := NewManifestService()
+	v := manifest.Manifest{ID: "manifest-illegal", Origin: "A", Destination: "B"}
+	if err := manifests.Create(context.Background(), op, v); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifests.Move(context.Background(), op, v.ID, manifest.Received); err == nil {
+		t.Fatal("prepared manifest received directly")
+	}
+	got, err := manifests.Get(context.Background(), op, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != manifest.Prepared {
+		t.Fatalf("status leaked to %s after rejected transition", got.Status)
+	}
+	if got.ReceivedAt != nil {
+		t.Fatalf("received time set after rejected transition: %v", got.ReceivedAt)
+	}
+	if err := manifests.Move(context.Background(), op, v.ID, manifest.Sealed); err != nil {
+		t.Fatalf("seal blocked after rejected transition: %v", err)
+	}
+}
+
 func TestManifestAndOperatorInputsAreCopied(t *testing.T) {
 	op, _, sup := boundaryPrincipals()
 	manifests := NewManifestService()
