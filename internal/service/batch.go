@@ -39,6 +39,16 @@ func (b BatchService) Import(ctx context.Context, p auth.Principal, items []Batc
 		workers = 1
 	}
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	record := func(code string, lot battery.Lot, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
+			out.Failures[code] = err
+			return
+		}
+		out.Created = append(out.Created, lot)
+	}
 	sem := make(chan struct{}, workers)
 	for _, item := range items {
 		item := item
@@ -48,16 +58,12 @@ func (b BatchService) Import(ctx context.Context, p auth.Principal, items []Batc
 			select {
 			case sem <- struct{}{}:
 			case <-ctx.Done():
-				out.Failures[item.Code] = ctx.Err()
+				record(item.Code, battery.Lot{}, ctx.Err())
 				return
 			}
 			defer func() { <-sem }()
 			lot, err := b.Lifecycle.Intake(ctx, p, item.Code, item.Chemistry, item.Hazard, item.ExpiresAt, request+"/"+item.Code)
-			if err != nil {
-				out.Failures[item.Code] = err
-			} else {
-				out.Created = append(out.Created, lot)
-			}
+			record(item.Code, lot, err)
 		}()
 	}
 	wg.Wait()
