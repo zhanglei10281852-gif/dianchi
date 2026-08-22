@@ -78,13 +78,12 @@ func (c *ComplianceService) Review(ctx context.Context, p auth.Principal, id str
 	if approve {
 		target = compliance.Approved
 	}
-	candidate := cert
-	candidate.Status = target
-	c.certs[id] = candidate
-	c.reviews[id] = append(c.reviews[id], compliance.Review{ID: token(), CertificateID: id, ReviewerID: p.ID, Decision: string(target), Notes: notes, ReviewedAt: time.Now().UTC()})
 	if err := compliance.ValidateReview(cert, target); err != nil {
 		return apperr.Wrap(apperr.Conflict, "review transition", err)
 	}
+	cert.Status = target
+	c.certs[id] = cert
+	c.reviews[id] = append(c.reviews[id], compliance.Review{ID: token(), CertificateID: id, ReviewerID: p.ID, Decision: string(target), Notes: notes, ReviewedAt: time.Now().UTC()})
 	return nil
 }
 func (c *ComplianceService) Get(ctx context.Context, p auth.Principal, id string) (compliance.Certificate, error) {
