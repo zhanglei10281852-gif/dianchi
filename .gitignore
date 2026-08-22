@@ -1,0 +1,5 @@
+dianchi.db*
+*.test
+coverage.out
+.env.local
+bin/
