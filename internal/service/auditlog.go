@@ -19,17 +19,12 @@ func (a *AuditLog) Write(ctx context.Context, p auth.Principal, object, action, 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	provisional := audit.NewEvent(token(), p.TenantID, p.ID, object, action, result, request, "", time.Now().UTC())
-	a.mu.Lock()
-	index := len(a.events)
-	a.events = append(a.events, provisional)
-	a.mu.Unlock()
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 	a.mu.Lock()
-	a.events[index].Payload = string(data)
+	a.events = append(a.events, audit.NewEvent(token(), p.TenantID, p.ID, object, action, result, request, string(data), time.Now().UTC()))
 	a.mu.Unlock()
 	return nil
 }
