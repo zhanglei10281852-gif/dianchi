@@ -18,23 +18,21 @@ func NewEnergyService() *EnergyService {
 	return &EnergyService{readings: map[string][]energy.Reading{}}
 }
 func (e *EnergyService) Record(ctx context.Context, p auth.Principal, r energy.Reading) error {
-	r.TenantID = p.TenantID
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	key := energyKey(p.TenantID, r.LotID)
-	candidate, validationErr := energy.Append(e.readings[key], r)
-	if validationErr == nil {
-		e.readings[key] = candidate
-	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if !p.Can("inspect") {
 		return apperr.New(apperr.Forbidden, "role cannot record energy")
 	}
+	r.TenantID = p.TenantID
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	key := energyKey(p.TenantID, r.LotID)
+	candidate, validationErr := energy.Append(e.readings[key], r)
 	if validationErr != nil {
 		return apperr.Wrap(apperr.Invalid, "reading", validationErr)
 	}
+	e.readings[key] = candidate
 	return nil
 }
 func (e *EnergyService) Average(ctx context.Context, p auth.Principal, lot string) (float64, error) {

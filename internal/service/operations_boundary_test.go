@@ -87,6 +87,31 @@ func TestEnergyReadingsWithSameLotIDStayInTenant(t *testing.T) {
 	}
 }
 
+func TestCancelledRecordExcludesReadingFromQueries(t *testing.T) {
+	op, _, _ := boundaryPrincipals()
+	svc := NewEnergyService()
+
+	base := energy.Reading{ID: "keep", LotID: "lot", Voltage: 10, Current: 2, Temperature: 20, At: time.Unix(1, 0)}
+	if err := svc.Record(context.Background(), op, base); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := svc.Record(ctx, op, energy.Reading{ID: "dropped", LotID: "lot", Voltage: 99, Current: 1, Temperature: 20, At: time.Unix(2, 0)}); err == nil {
+		t.Fatal("cancelled record succeeded")
+	}
+
+	avg, err := svc.Average(context.Background(), op, "lot")
+	if err != nil || avg != 20 {
+		t.Fatalf("average=%v err=%v want 20", avg, err)
+	}
+	rows := svc.Between(context.Background(), op, "lot", time.Unix(0, 0), time.Unix(3, 0))
+	if len(rows) != 1 || rows[0].ID != "keep" {
+		t.Fatalf("between=%+v", rows)
+	}
+}
+
 func TestManifestAndOperatorInputsAreCopied(t *testing.T) {
 	op, _, sup := boundaryPrincipals()
 	manifests := NewManifestService()
