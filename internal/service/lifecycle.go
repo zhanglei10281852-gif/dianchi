@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -172,11 +171,8 @@ func (s *Service) Recover(ctx context.Context, p auth.Principal, lotID string, l
 		if e = s.Store.InsertOutbox(txctx, tx, token(), p.TenantID, lotID, "recovery.confirmed", string(payload)); e != nil {
 			return e
 		}
-		return nil
+		return s.writeAudit(txctx, tx, p, lotID, "recover", "confirmed", requestID)
 	})
-	if err == nil {
-		err = s.writeAuditOutsideTx(ctx, p, lotID, "recover", "confirmed", requestID)
-	}
 	return out, err
 }
 func (s *Service) Certify(ctx context.Context, p auth.Principal, lotID, requestID string) (battery.Certificate, error) {
@@ -216,16 +212,6 @@ func (s *Service) writeAudit(ctx context.Context, tx *sql.Tx, p auth.Principal, 
 	e := audit.Event{ID: token(), TenantID: p.TenantID, ActorID: p.ID, ObjectType: "lot", ObjectID: obj, Action: action, Result: result, RequestID: requestID, Payload: "{}", CreatedAt: s.Clock.Now()}
 	return s.Audit.InsertAudit(ctx, tx, e)
 }
-func (s *Service) writeAuditOutsideTx(ctx context.Context, p auth.Principal, obj, action, result, requestID string) error {
-	e := audit.Event{ID: token(), TenantID: p.TenantID, ActorID: p.ID, ObjectType: "lot", ObjectID: obj, Action: action, Result: result, RequestID: requestID, Payload: "{}", CreatedAt: s.Clock.Now()}
-	w, ok := s.Audit.(interface {
-		InsertAuditDirect(context.Context, audit.Event) error
-	})
-	if !ok {
-		return errors.New("audit store does not support direct writes")
-	}
-	return w.InsertAuditDirect(ctx, e)
-}
 func (s *Service) ValidateContext(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
@@ -234,5 +220,3 @@ func (s *Service) ValidateContext(ctx context.Context) error {
 		return nil
 	}
 }
-
-var _ = errors.Is

@@ -11,9 +11,11 @@ import (
 
 	"github.com/zhanglei10281852-gif/dianchi/internal/apperr"
 	"github.com/zhanglei10281852-gif/dianchi/internal/clock"
+	"github.com/zhanglei10281852-gif/dianchi/internal/domain/audit"
 	"github.com/zhanglei10281852-gif/dianchi/internal/domain/auth"
 	"github.com/zhanglei10281852-gif/dianchi/internal/domain/battery"
 	"github.com/zhanglei10281852-gif/dianchi/internal/pagination"
+	"github.com/zhanglei10281852-gif/dianchi/internal/repository"
 	"github.com/zhanglei10281852-gif/dianchi/internal/storage/sqlite"
 )
 
@@ -349,6 +351,85 @@ func TestDatabaseSurvivesReopen(t *testing.T) {
 	a.Store = s2
 	if _, _, err = a.Login(ctx, "t", "persist", "pw"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// failingAuditStore wraps a Store and forces the next InsertAudit call to
+// return auditErr, then transparently delegates every other method.
+type failingAuditStore struct {
+	repository.Store
+	auditErr  error
+	triggered bool
+}
+
+func (f *failingAuditStore) InsertAudit(ctx context.Context, tx *sql.Tx, e audit.Event) error {
+	if f.auditErr != nil && !f.triggered {
+		f.triggered = true
+		return f.auditErr
+	}
+	return f.Store.InsertAudit(ctx, tx, e)
+}
+
+// TestRecoverRollsBackAllEcoTrackingOnAuditFailure verifies that when the audit
+// write for a recovery fails, the recovery row, lot state transition,
+// idempotency record and outbox event are rolled back together so the original
+// request can be retried with the same idempotency key and produce exactly one
+// set of committed records.
+func TestRecoverRollsBackAllEcoTrackingOnAuditFailure(t *testing.T) {
+	f := newFixture(t)
+	defer f.close()
+	lot := createFlow(t, f)
+
+	failing := &failingAuditStore{Store: f.store, auditErr: errors.New("audit storage unavailable")}
+	f.svc.Audit = failing
+
+	if _, err := f.svc.Recover(f.ctx, f.operator, lot.ID, 120, 80, 40, "rollback-key", "req-fail"); err == nil {
+		t.Fatal("recover with failing audit succeeded")
+	}
+
+	// Nothing should have been committed: recovery, idempotency, outbox, lot state.
+	assertCount(t, f.store.DB, 0, `SELECT COUNT(*) FROM recoveries WHERE lot_id=?`, lot.ID)
+	assertCount(t, f.store.DB, 0, `SELECT COUNT(*) FROM idempotency_keys WHERE key=?`, "rollback-key")
+	assertCount(t, f.store.DB, 0, `SELECT COUNT(*) FROM outbox WHERE aggregate_id=?`, lot.ID)
+	assertCount(t, f.store.DB, 0, `SELECT COUNT(*) FROM audit_events WHERE object_id=? AND action='recover'`, lot.ID)
+
+	// The lot must still be in dismantling state so the retry can proceed.
+	var state string
+	if err := f.store.DB.QueryRow(`SELECT state FROM lots WHERE id=?`, lot.ID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if battery.State(state) != battery.Dismantling {
+		t.Fatalf("lot state after rollback=%s want dismantling", state)
+	}
+
+	// Dependency recovered: retry with the original idempotency key must now
+	// succeed and leave exactly one of each committed record.
+	f.svc.Audit = f.store
+	rec, err := f.svc.Recover(f.ctx, f.operator, lot.ID, 120, 80, 40, "rollback-key", "req-retry")
+	if err != nil {
+		t.Fatalf("retry recover failed: %v", err)
+	}
+	assertCount(t, f.store.DB, 1, `SELECT COUNT(*) FROM recoveries WHERE lot_id=?`, lot.ID)
+	assertCount(t, f.store.DB, 1, `SELECT COUNT(*) FROM idempotency_keys WHERE key=?`, "rollback-key")
+	assertCount(t, f.store.DB, 1, `SELECT COUNT(*) FROM outbox WHERE aggregate_id=?`, lot.ID)
+	assertCount(t, f.store.DB, 1, `SELECT COUNT(*) FROM audit_events WHERE object_id=? AND action='recover'`, lot.ID)
+
+	// A second call with the same key replays the original recovery, not a new one.
+	replayed, err := f.svc.Recover(f.ctx, f.operator, lot.ID, 999, 999, 999, "rollback-key", "req-replay")
+	if err != nil || replayed.ID != rec.ID {
+		t.Fatalf("idempotent replay mismatch: id=%s err=%v", replayed.ID, err)
+	}
+	assertCount(t, f.store.DB, 1, `SELECT COUNT(*) FROM recoveries WHERE lot_id=?`, lot.ID)
+}
+
+func assertCount(t *testing.T, db *sql.DB, want int, query string, args ...any) {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(query, args...).Scan(&n); err != nil {
+		t.Fatalf("query %q failed: %v", query, err)
+	}
+	if n != want {
+		t.Fatalf("query %q args=%v got %d want %d", query, args, n, want)
 	}
 }
 
