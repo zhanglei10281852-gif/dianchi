@@ -51,7 +51,23 @@ func (r *Retrier) Do(ctx context.Context, key string, fn func(context.Context) e
 		r.Mu.Lock()
 		r.Attempts[key] = attempt + 1
 		r.Mu.Unlock()
-		time.Sleep(r.Policy.Delay(attempt))
+		if err := r.sleep(ctx, r.Policy.Delay(attempt)); err != nil {
+			return err
+		}
+	}
+}
+
+// sleep blocks for d unless ctx is canceled or expires first. Unlike time.Sleep,
+// it reports ctx's error promptly so a caller that cancels during the backoff
+// between attempts does not have to wait for the full delay to elapse.
+func (r *Retrier) sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
 }
 func IsPermanent(err error) bool { return errors.Is(err, context.Canceled) }
