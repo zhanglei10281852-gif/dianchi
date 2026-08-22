@@ -23,28 +23,27 @@ func NewMaterialService() *MaterialService {
 	return &MaterialService{lots: map[string][]material.Lot{}, assays: map[string][]material.Assay{}}
 }
 func (m *MaterialService) Add(ctx context.Context, p auth.Principal, l material.Lot) error {
-	l.TenantID = p.TenantID
-	m.mu.Lock()
-	for _, v := range m.lots[l.TenantID] {
-		if v.ID == l.ID {
-			m.mu.Unlock()
-			return apperr.New(apperr.Conflict, "material already exists")
-		}
-	}
-	m.lots[l.TenantID] = append(m.lots[l.TenantID], l)
-	m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if !p.Can("recover") {
 		return apperr.New(apperr.Forbidden, "role cannot add material")
 	}
+	l.TenantID = p.TenantID
 	if err := validation.Tenant(l.TenantID); err != nil {
 		return apperr.Wrap(apperr.Invalid, "tenant", err)
 	}
 	if err := material.ValidateLot(l); err != nil {
 		return apperr.Wrap(apperr.Invalid, "material", err)
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, v := range m.lots[l.TenantID] {
+		if v.ID == l.ID {
+			return apperr.New(apperr.Conflict, "material already exists")
+		}
+	}
+	m.lots[l.TenantID] = append(m.lots[l.TenantID], l)
 	return nil
 }
 func (m *MaterialService) AddAssay(ctx context.Context, p auth.Principal, a material.Assay) error {
