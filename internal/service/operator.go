@@ -35,26 +35,24 @@ func (o *OperatorService) Put(ctx context.Context, p auth.Principal, v operator.
 	return nil
 }
 func (o *OperatorService) Grant(ctx context.Context, p auth.Principal, id string, cert operator.Certification, expires time.Time) error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	v, ok := o.items[id]
-	if !ok || v.TenantID != p.TenantID {
-		return apperr.New(apperr.NotFound, "operator missing")
-	}
-	if v.Certifications == nil {
-		v.Certifications = map[operator.Certification]time.Time{}
-	}
-	v.Certifications[cert] = expires
-	o.items[id] = v
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if p.Role != auth.Supervisor {
 		return apperr.New(apperr.Forbidden, "supervisor required")
 	}
-	if _, err := operator.GrantCertification(v, cert, expires, time.Now().UTC()); err != nil {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	v, ok := o.items[id]
+	if !ok || v.TenantID != p.TenantID {
+		return apperr.New(apperr.NotFound, "operator missing")
+	}
+	now := time.Now().UTC()
+	updated, err := operator.GrantCertification(v, cert, expires, now)
+	if err != nil {
 		return apperr.Wrap(apperr.Invalid, "certification", err)
 	}
+	o.items[id] = updated
 	return nil
 }
 func (o *OperatorService) Get(ctx context.Context, p auth.Principal, id string) (operator.Operator, error) {

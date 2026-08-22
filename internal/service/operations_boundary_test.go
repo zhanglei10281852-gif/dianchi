@@ -111,6 +111,29 @@ func TestManifestAndOperatorInputsAreCopied(t *testing.T) {
 	}
 }
 
+func TestOperatorSelfGrantDeniedLeavesNoCredential(t *testing.T) {
+	op, _, sup := boundaryPrincipals()
+	operators := NewOperatorService()
+	worker := operator.Operator{ID: "worker", Name: "Worker", Shift: operator.Day, Active: true}
+	if err := operators.Put(context.Background(), sup, worker); err != nil {
+		t.Fatal(err)
+	}
+	expires := time.Now().Add(time.Hour)
+	if err := operators.Grant(context.Background(), op, "worker", operator.Hazmat, expires); err == nil {
+		t.Fatal("operator self-grant succeeded")
+	}
+	profile, err := operators.Get(context.Background(), sup, "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, leaked := profile.Certifications[operator.Hazmat]; leaked {
+		t.Fatalf("hazmat credential leaked after denied grant: %+v", profile.Certifications)
+	}
+	if profile.CanHandleHazard(time.Now()) {
+		t.Fatal("denied grant still qualified operator for hazardous work")
+	}
+}
+
 func TestSafetyAndQuarantineUseTenantQualifiedKeys(t *testing.T) {
 	opA, opB, supA := boundaryPrincipals()
 	svc := NewSafetyService()
