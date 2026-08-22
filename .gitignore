@@ -1,4 +1,7 @@
 dianchi.db*
+*.db
+*.db-shm
+*.db-wal
 *.test
 coverage.out
 .env.local
