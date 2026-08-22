@@ -34,9 +34,13 @@ func (b BatchService) Import(ctx context.Context, p auth.Principal, items []Batc
 	}
 	started := time.Now().UTC()
 	out := BatchResult{Created: make([]battery.Lot, 0, len(items)), Failures: map[string]error{}, StartedAt: started}
+	workers := b.Workers
+	if workers < 1 {
+		workers = 1
+	}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, b.Workers)
+	sem := make(chan struct{}, workers)
 	for _, item := range items {
 		item := item
 		wg.Add(1)

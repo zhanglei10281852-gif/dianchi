@@ -37,6 +37,10 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 		parts := strings.SplitN(item, ":", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			d.health.Record(ErrDuplicate)
+			continue
+		}
 		d.mu.RLock()
 		h := d.handlers[parts[0]]
 		d.mu.RUnlock()
@@ -47,7 +51,9 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 		err := h(ctx, parts[1])
 		d.health.Record(err)
 		if err != nil {
-			time.Sleep(10 * time.Millisecond)
+			if err := Wait(ctx, 10*time.Millisecond); err != nil {
+				return err
+			}
 		}
 	}
 }

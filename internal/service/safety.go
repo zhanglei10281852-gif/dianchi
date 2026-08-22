@@ -24,15 +24,16 @@ func (s *SafetyService) Record(ctx context.Context, p auth.Principal, f safety.F
 	if !p.Can("inspect") {
 		return apperr.New(apperr.Forbidden, "role cannot record finding")
 	}
+	f.TenantID = p.TenantID
 	if err := safety.Validate(f); err != nil {
 		return apperr.Wrap(apperr.Invalid, "finding", err)
 	}
-	f.TenantID = p.TenantID
 	f.ObservedAt = time.Now().UTC()
 	f.Level = safety.Assess(f.Measured, f.Limit)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.findings[f.LotID] = append(s.findings[f.LotID], f)
+	key := safetyKey(p.TenantID, f.LotID)
+	s.findings[key] = append(s.findings[key], f)
 	return nil
 }
 func (s *SafetyService) Resolve(ctx context.Context, p auth.Principal, lotID, id string) error {
@@ -44,27 +45,30 @@ func (s *SafetyService) Resolve(ctx context.Context, p auth.Principal, lotID, id
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i, f := range s.findings[lotID] {
+	key := safetyKey(p.TenantID, lotID)
+	for i, f := range s.findings[key] {
 		if f.ID == id && f.TenantID == p.TenantID {
-			s.findings[lotID][i] = safety.Resolve(f)
+			s.findings[key][i] = safety.Resolve(f)
 			return nil
 		}
 	}
 	return apperr.New(apperr.NotFound, "finding missing")
 }
-func (s *SafetyService) Open(lotID string) []safety.Finding {
+func (s *SafetyService) Open(p auth.Principal, lotID string) []safety.Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]safety.Finding, 0)
-	for _, f := range s.findings[lotID] {
+	for _, f := range s.findings[safetyKey(p.TenantID, lotID)] {
 		if f.Open() {
 			out = append(out, f)
 		}
 	}
 	return out
 }
-func (s *SafetyService) Checklist(lotID string) safety.Checklist {
+func (s *SafetyService) Checklist(p auth.Principal, lotID string) safety.Checklist {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return safety.Checklist{ID: token(), LotID: lotID, Findings: append([]safety.Finding(nil), s.findings[lotID]...)}
+	return safety.Checklist{ID: token(), LotID: lotID, InspectorID: p.ID, Findings: append([]safety.Finding(nil), s.findings[safetyKey(p.TenantID, lotID)]...)}
 }
+
+func safetyKey(tenant, lot string) string { return tenant + "\x00" + lot }

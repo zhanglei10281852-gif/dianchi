@@ -154,7 +154,7 @@ func (s *ReconciliationService) save(ctx context.Context, r reconciliation.Repor
 	s.mu.Lock()
 	s.cache[r.ID] = r
 	s.mu.Unlock()
-	return r, nil
+	return r.Snapshot(), nil
 }
 
 type RouteService struct {

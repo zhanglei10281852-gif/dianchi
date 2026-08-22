@@ -202,7 +202,7 @@ func (p *Planner) AddStop(id string, s Stop) (Route, error) {
 	if e == nil {
 		p.routes[id] = next
 	}
-	return next, e
+	return next.Snapshot(), e
 }
 func (p *Planner) Transition(id string, next Status, now time.Time) (Route, error) {
 	p.mu.Lock()

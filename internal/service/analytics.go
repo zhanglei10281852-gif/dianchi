@@ -46,10 +46,11 @@ func (a *Analytics) Daily(ctx context.Context, tenant string, from, to time.Time
 		if e.Tenant != tenant || e.At.Before(from) || !e.At.Before(to) {
 			continue
 		}
-		key := e.At.UTC().Format("2006-01-02")
+		eventTime := e.At.UTC()
+		key := eventTime.Format("2006-01-02")
 		p := out[key]
 		if p == nil {
-			p = &DailyPoint{Day: time.Date(e.At.Year(), e.At.Month(), e.At.Day(), 0, 0, 0, 0, time.UTC)}
+			p = &DailyPoint{Day: time.Date(eventTime.Year(), eventTime.Month(), eventTime.Day(), 0, 0, 0, 0, time.UTC)}
 			out[key] = p
 		}
 		switch e.State {

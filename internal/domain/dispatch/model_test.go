@@ -97,6 +97,21 @@ func TestPlannerTenantIsolationAndCopies(t *testing.T) {
 		t.Fatal("tenant leaked")
 	}
 }
+
+func TestPlannerAddStopResultDoesNotExposeStoredSlice(t *testing.T) {
+	now := time.Now()
+	p, _ := NewPlanner([]Vehicle{vehicle()})
+	_, _ = p.Create("r", "tenant-a", "truck-1", now)
+	added, err := p.AddStop("r", stop("one", 1, 10, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	added.Stops[0].Address = "mutated by caller"
+	stored, _ := p.Get("r")
+	if stored.Stops[0].Address == "mutated by caller" {
+		t.Fatal("returned route exposed planner-owned stop storage")
+	}
+}
 func TestPlannerConcurrentAddsHaveSingleWinnerForDuplicate(t *testing.T) {
 	now := time.Now()
 	p, _ := NewPlanner([]Vehicle{vehicle()})

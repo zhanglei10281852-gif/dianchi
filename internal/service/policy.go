@@ -36,6 +36,7 @@ func (p *PolicyService) Set(ctx context.Context, principal auth.Principal, v Pol
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	v.AllowedChemistries = copyMap(v.AllowedChemistries)
 	p.policies[principal.TenantID] = v
 	return nil
 }

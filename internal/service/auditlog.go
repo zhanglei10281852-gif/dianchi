@@ -19,7 +19,10 @@ func (a *AuditLog) Write(ctx context.Context, p auth.Principal, object, action, 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.events = append(a.events, audit.Event{ID: token(), TenantID: p.TenantID, ActorID: p.ID, ObjectType: "domain", ObjectID: object, Action: action, Result: result, RequestID: request, Payload: string(data), CreatedAt: time.Now().UTC()})

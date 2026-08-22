@@ -9,9 +9,12 @@ type Queue[T any] struct {
 	mu     sync.Mutex
 	items  []T
 	closed bool
+	notify chan struct{}
 }
 
-func NewQueue[T any]() *Queue[T] { return &Queue[T]{items: make([]T, 0)} }
+func NewQueue[T any]() *Queue[T] {
+	return &Queue[T]{items: make([]T, 0), notify: make(chan struct{}, 1)}
+}
 func (q *Queue[T]) Push(v T) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -19,6 +22,10 @@ func (q *Queue[T]) Push(v T) bool {
 		return false
 	}
 	q.items = append(q.items, v)
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
 	return true
 }
 func (q *Queue[T]) Pop(ctx context.Context) (T, bool) {
@@ -40,9 +47,17 @@ func (q *Queue[T]) Pop(ctx context.Context) (T, bool) {
 		case <-ctx.Done():
 			var zero T
 			return zero, false
-		default:
+		case <-q.notify:
 		}
 	}
 }
-func (q *Queue[T]) Close()   { q.mu.Lock(); defer q.mu.Unlock(); q.closed = true }
+func (q *Queue[T]) Close() {
+	q.mu.Lock()
+	q.closed = true
+	q.mu.Unlock()
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
+}
 func (q *Queue[T]) Len() int { q.mu.Lock(); defer q.mu.Unlock(); return len(q.items) }

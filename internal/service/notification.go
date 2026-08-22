@@ -5,6 +5,7 @@ import (
 	"github.com/zhanglei10281852-gif/dianchi/internal/apperr"
 	"github.com/zhanglei10281852-gif/dianchi/internal/domain/auth"
 	"github.com/zhanglei10281852-gif/dianchi/internal/domain/notification"
+	"sort"
 	"sync"
 	"time"
 )
@@ -21,15 +22,18 @@ func (n *NotificationService) Queue(ctx context.Context, p auth.Principal, m not
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	m.TenantID = p.TenantID
 	if err := notification.Validate(m); err != nil {
 		return apperr.Wrap(apperr.Invalid, "notification", err)
 	}
-	m.TenantID = p.TenantID
 	m.Status = notification.Queued
 	m.CreatedAt = time.Now().UTC()
 	m.NextAttempt = m.CreatedAt
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if _, exists := n.items[m.ID]; exists {
+		return apperr.New(apperr.Conflict, "notification already queued")
+	}
 	n.items[m.ID] = m
 	return nil
 }
@@ -39,7 +43,19 @@ func (n *NotificationService) Claim(ctx context.Context, now time.Time) (notific
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	for id, m := range n.items {
+	ids := make([]string, 0, len(n.items))
+	for id := range n.items {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		left, right := n.items[ids[i]], n.items[ids[j]]
+		if left.NextAttempt.Equal(right.NextAttempt) {
+			return left.ID < right.ID
+		}
+		return left.NextAttempt.Before(right.NextAttempt)
+	})
+	for _, id := range ids {
+		m := n.items[id]
 		if m.Ready(now) {
 			m.Status = notification.Sending
 			m.Attempts++
@@ -77,5 +93,11 @@ func (n *NotificationService) List(tenant string) []notification.Message {
 			out = append(out, m)
 		}
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
 	return out
 }

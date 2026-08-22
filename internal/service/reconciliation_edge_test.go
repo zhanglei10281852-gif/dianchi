@@ -108,3 +108,22 @@ func TestReconciliationReportVersionIncrementsAcrossWorkflow(t *testing.T) {
 		t.Fatalf("approval version=%d", r.Version)
 	}
 }
+
+func TestReconciliationReturnedReportDoesNotExposeCache(t *testing.T) {
+	store := newReconciliationMemory()
+	svc := NewReconciliationService(store, recNow)
+	op, _ := recPrincipals()
+	r, _ := svc.CreateReport(context.Background(), op, "cache-copy")
+	r, err := svc.AppendMeasurement(context.Background(), op, r.ID, recMeasurement("lot", 99))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Measurements[0].Actual = 1
+	loaded, err := svc.load(context.Background(), op, r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Measurements[0].Actual != 99 {
+		t.Fatalf("caller polluted cached measurement: %+v", loaded.Measurements[0])
+	}
+}

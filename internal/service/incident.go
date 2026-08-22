@@ -5,6 +5,7 @@ import (
 	"github.com/zhanglei10281852-gif/dianchi/internal/apperr"
 	"github.com/zhanglei10281852-gif/dianchi/internal/domain/auth"
 	"github.com/zhanglei10281852-gif/dianchi/internal/domain/incident"
+	"strings"
 	"sync"
 	"time"
 )
@@ -34,6 +35,9 @@ func (i *IncidentService) Open(ctx context.Context, p auth.Principal, v incident
 	v.OpenedAt = time.Now().UTC()
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	if _, exists := i.items[v.ID]; exists {
+		return v, apperr.New(apperr.Conflict, "incident already exists")
+	}
 	i.items[v.ID] = v
 	return v, nil
 }
@@ -61,6 +65,9 @@ func (i *IncidentService) Move(ctx context.Context, p auth.Principal, id string,
 func (i *IncidentService) AddAction(ctx context.Context, p auth.Principal, id, description string) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if len(strings.TrimSpace(description)) < 3 {
+		return apperr.New(apperr.Invalid, "action description is required")
 	}
 	i.mu.Lock()
 	defer i.mu.Unlock()

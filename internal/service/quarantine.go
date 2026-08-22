@@ -28,10 +28,12 @@ func (q *Quarantine) Hold(ctx context.Context, p auth.Principal, l battery.Lot, 
 	if l.State != battery.Quarantined {
 		return apperr.New(apperr.Invalid, "lot is not quarantined")
 	}
+	l.TenantID = p.TenantID
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.items[l.ID] = l
-	q.notes[l.ID] = append(q.notes[l.ID], note)
+	key := quarantineKey(p.TenantID, l.ID)
+	q.items[key] = l
+	q.notes[key] = append(q.notes[key], note)
 	return nil
 }
 func (q *Quarantine) Release(ctx context.Context, p auth.Principal, id string) error {
@@ -43,21 +45,26 @@ func (q *Quarantine) Release(ctx context.Context, p auth.Principal, id string) e
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if _, ok := q.items[id]; !ok {
+	key := quarantineKey(p.TenantID, id)
+	if _, ok := q.items[key]; !ok {
 		return apperr.New(apperr.NotFound, "quarantine record missing")
 	}
-	delete(q.items, id)
+	delete(q.items, key)
+	delete(q.notes, key)
 	return nil
 }
-func (q *Quarantine) Get(id string) (battery.Lot, []string, bool) {
+func (q *Quarantine) Get(p auth.Principal, id string) (battery.Lot, []string, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	v, ok := q.items[id]
+	key := quarantineKey(p.TenantID, id)
+	v, ok := q.items[key]
 	if !ok {
 		return battery.Lot{}, nil, false
 	}
-	return v, append([]string(nil), q.notes[id]...), true
+	return v, append([]string(nil), q.notes[key]...), true
 }
+
+func quarantineKey(tenant, lot string) string { return tenant + "\x00" + lot }
 func (q *Quarantine) Expire(before time.Time) int {
 	q.mu.Lock()
 	defer q.mu.Unlock()

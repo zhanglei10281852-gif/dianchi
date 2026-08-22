@@ -24,6 +24,7 @@ func (m *ManifestService) Create(ctx context.Context, p auth.Principal, v manife
 	if !p.Can("recover") {
 		return apperr.New(apperr.Forbidden, "role cannot create manifest")
 	}
+	v.TenantID = p.TenantID
 	if err := manifest.Validate(v); err != nil {
 		return apperr.Wrap(apperr.Invalid, "manifest", err)
 	}
@@ -100,6 +101,7 @@ func (m *ManifestService) Pending(tenant string) []manifest.Manifest {
 	out := make([]manifest.Manifest, 0)
 	for _, v := range m.data {
 		if v.TenantID == tenant && v.Status != manifest.Received && v.Status != manifest.Cancelled {
+			v.Items = append([]manifest.Item(nil), v.Items...)
 			out = append(out, v)
 		}
 	}

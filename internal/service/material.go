@@ -29,6 +29,7 @@ func (m *MaterialService) Add(ctx context.Context, p auth.Principal, l material.
 	if !p.Can("recover") {
 		return apperr.New(apperr.Forbidden, "role cannot add material")
 	}
+	l.TenantID = p.TenantID
 	if err := validation.Tenant(l.TenantID); err != nil {
 		return apperr.Wrap(apperr.Invalid, "tenant", err)
 	}
@@ -55,6 +56,7 @@ func (m *MaterialService) AddAssay(ctx context.Context, p auth.Principal, a mate
 	if !p.Can("inspect") {
 		return apperr.New(apperr.Forbidden, "role cannot assay")
 	}
+	a.TenantID = p.TenantID
 	if err := material.ValidateAssay(a); err != nil {
 		return apperr.Wrap(apperr.Invalid, "assay", err)
 	}
@@ -65,6 +67,9 @@ func (m *MaterialService) AddAssay(ctx context.Context, p auth.Principal, a mate
 	return nil
 }
 func (m *MaterialService) List(ctx context.Context, tenant string, kind material.Kind) []material.Lot {
+	if ctx.Err() != nil {
+		return nil
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	out := make([]material.Lot, 0)
@@ -77,6 +82,9 @@ func (m *MaterialService) List(ctx context.Context, tenant string, kind material
 	return out
 }
 func (m *MaterialService) Balance(ctx context.Context, tenant string) map[material.Kind]material.Balance {
+	if ctx.Err() != nil {
+		return nil
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	out := map[material.Kind]material.Balance{}
@@ -103,10 +111,14 @@ func (m *MaterialService) Reserve(ctx context.Context, p auth.Principal, tenant 
 	if grams <= 0 {
 		return nil, apperr.Invalidf("reserve amount must be positive")
 	}
+	if tenant != p.TenantID {
+		return nil, apperr.New(apperr.Forbidden, "cannot reserve another tenant's material")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	remaining := grams
 	selected := make([]material.Lot, 0)
+	allocations := make(map[int]int)
 	for i := range m.lots[tenant] {
 		if m.lots[tenant][i].Kind == kind && m.lots[tenant][i].IsUsable() && remaining > 0 {
 			take := m.lots[tenant][i]
@@ -114,11 +126,15 @@ func (m *MaterialService) Reserve(ctx context.Context, p auth.Principal, tenant 
 				take.Grams = remaining
 			}
 			selected = append(selected, take)
+			allocations[i] = take.Grams
 			remaining -= take.Grams
 		}
 	}
 	if remaining > 0 {
 		return nil, apperr.New(apperr.Conflict, "insufficient material")
+	}
+	for index, reserved := range allocations {
+		m.lots[tenant][index].Grams -= reserved
 	}
 	return selected, nil
 }

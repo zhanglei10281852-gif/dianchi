@@ -24,10 +24,11 @@ func (o *OperatorService) Put(ctx context.Context, p auth.Principal, v operator.
 	if p.Role != auth.Supervisor {
 		return apperr.New(apperr.Forbidden, "supervisor required")
 	}
+	v.TenantID = p.TenantID
 	if err := operator.Validate(v); err != nil {
 		return apperr.Wrap(apperr.Invalid, "operator", err)
 	}
-	v.TenantID = p.TenantID
+	v.Certifications = operator.MergeCertifications(nil, v.Certifications)
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.items[v.ID] = v

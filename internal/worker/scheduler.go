@@ -55,6 +55,11 @@ func (s *Scheduler) runDue(ctx context.Context, now time.Time) {
 	for _, j := range jobs {
 		err := j.Run(ctx)
 		s.mu.Lock()
+		current, stillScheduled := s.jobs[j.ID]
+		if !stillScheduled || current.Attempts != j.Attempts || !current.Next.Equal(j.Next) {
+			s.mu.Unlock()
+			continue
+		}
 		if err == nil {
 			delete(s.jobs, j.ID)
 		} else {

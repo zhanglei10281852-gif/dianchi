@@ -24,13 +24,14 @@ func (e *EnergyService) Record(ctx context.Context, p auth.Principal, r energy.R
 	if !p.Can("inspect") {
 		return apperr.New(apperr.Forbidden, "role cannot record energy")
 	}
+	r.TenantID = p.TenantID
 	if err := energy.Validate(r); err != nil {
 		return apperr.Wrap(apperr.Invalid, "reading", err)
 	}
-	r.TenantID = p.TenantID
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.readings[r.LotID] = append(e.readings[r.LotID], r)
+	key := energyKey(p.TenantID, r.LotID)
+	e.readings[key] = append(e.readings[key], r)
 	return nil
 }
 func (e *EnergyService) Average(ctx context.Context, p auth.Principal, lot string) (float64, error) {
@@ -39,21 +40,26 @@ func (e *EnergyService) Average(ctx context.Context, p auth.Principal, lot strin
 	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	rows := e.readings[lot]
+	rows := e.readings[energyKey(p.TenantID, lot)]
 	if len(rows) == 0 {
 		return 0, apperr.New(apperr.NotFound, "readings missing")
 	}
 	out, err := energy.Aggregate(rows)
 	return out, err
 }
-func (e *EnergyService) Between(ctx context.Context, lot string, start, end time.Time) []energy.Reading {
+func (e *EnergyService) Between(ctx context.Context, p auth.Principal, lot string, start, end time.Time) []energy.Reading {
+	if ctx.Err() != nil {
+		return nil
+	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	out := make([]energy.Reading, 0)
-	for _, r := range e.readings[lot] {
+	for _, r := range e.readings[energyKey(p.TenantID, lot)] {
 		if !r.At.Before(start) && r.At.Before(end) {
 			out = append(out, r)
 		}
 	}
 	return out
 }
+
+func energyKey(tenant, lot string) string { return tenant + "\x00" + lot }
