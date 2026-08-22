@@ -29,11 +29,10 @@ func (n *NotificationService) Queue(ctx context.Context, p auth.Principal, m not
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	_, exists := n.items[m.ID]
-	n.items[m.ID] = candidate
-	if exists {
+	if _, exists := n.items[m.ID]; exists {
 		return apperr.New(apperr.Conflict, "notification already queued")
 	}
+	n.items[m.ID] = candidate
 	return nil
 }
 func (n *NotificationService) Claim(ctx context.Context, now time.Time) (notification.Message, bool) {
