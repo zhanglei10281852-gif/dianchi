@@ -207,3 +207,24 @@ func TestRouteServiceErrorsAndRace(t *testing.T) {
 		t.Fatalf("winners=%d", n)
 	}
 }
+
+func TestRouteServicePlanPropagatesArchiveFailureAndRollsBack(t *testing.T) {
+	v := dispatch.Vehicle{ID: "truck", CapacityKg: 100, HazardLimit: 7, AvailableFrom: recNow()}
+	p, _ := dispatch.NewPlanner([]dispatch.Vehicle{v})
+	store := newReconciliationMemory()
+	svc := NewRouteService(p, store, recNow)
+	op, _ := recPrincipals()
+
+	store.fail = true
+	if _, err := svc.Plan(context.Background(), op, "route-fail", "truck"); err == nil {
+		t.Fatal("archive failure swallowed")
+	}
+	if _, ok := p.Get("route-fail"); ok {
+		t.Fatal("planner kept route after archive failure")
+	}
+
+	store.fail = false
+	if _, err := svc.Plan(context.Background(), op, "route-fail", "truck"); err != nil {
+		t.Fatalf("retry after rollback failed: %v", err)
+	}
+}

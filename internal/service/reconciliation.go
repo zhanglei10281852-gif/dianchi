@@ -182,7 +182,8 @@ func (s *RouteService) Plan(ctx context.Context, p auth.Principal, id, vehicle s
 	}
 	if s.Store != nil {
 		if e = s.Store.SaveRoute(ctx, r); e != nil {
-			return r, nil
+			s.Planner.Remove(id)
+			return dispatch.Route{}, e
 		}
 	}
 	return r, nil

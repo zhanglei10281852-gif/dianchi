@@ -227,6 +227,15 @@ func (p *Planner) Transition(id string, next Status, now time.Time) (Route, erro
 	}
 	return r, e
 }
+func (p *Planner) Remove(id string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, ok := p.routes[id]; !ok {
+		return false
+	}
+	delete(p.routes, id)
+	return true
+}
 func (p *Planner) Get(id string) (Route, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
