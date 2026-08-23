@@ -63,7 +63,7 @@ func (m *MaterialService) AddAssay(ctx context.Context, p auth.Principal, a mate
 	a.Grade = material.Classify(a.PurityPPM, a.MoisturePPM)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.assays[a.RecoveryID] = append(m.assays[a.RecoveryID], a)
+	m.assays[a.TenantID] = append(m.assays[a.TenantID], a)
 	return nil
 }
 func (m *MaterialService) List(ctx context.Context, tenant string, kind material.Kind) []material.Lot {
@@ -143,12 +143,10 @@ func (m *MaterialService) AssaySummary(tenant string) string {
 	defer m.mu.RUnlock()
 	n := 0
 	passed := 0
-	for _, items := range m.assays {
-		for _, a := range items {
-			n++
-			if a.Passes() {
-				passed++
-			}
+	for _, a := range m.assays[tenant] {
+		n++
+		if a.Passes() {
+			passed++
 		}
 	}
 	return fmt.Sprintf("%d/%d assays pass", passed, n)

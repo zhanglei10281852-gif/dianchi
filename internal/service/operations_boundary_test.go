@@ -62,6 +62,25 @@ func TestMaterialFailedReservationDoesNotConsumeInventory(t *testing.T) {
 	}
 }
 
+func TestMaterialAssaySummaryIsTenantScoped(t *testing.T) {
+	opA, opB, _ := boundaryPrincipals()
+	svc := NewMaterialService()
+	pass := material.Assay{ID: "a-pass", RecoveryID: "rec-shared", Kind: material.Lithium, PurityPPM: 990000, MoisturePPM: 50, AssayedAt: time.Now()}
+	fail := material.Assay{ID: "a-fail", RecoveryID: "rec-shared", Kind: material.Lithium, PurityPPM: 100000, MoisturePPM: 50, AssayedAt: time.Now()}
+	if err := svc.AddAssay(context.Background(), opA, pass); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddAssay(context.Background(), opB, fail); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := svc.AssaySummary("tenant-a"), "1/1 assays pass"; got != want {
+		t.Fatalf("tenant-a summary=%q want %q (assays leaked across tenants)", got, want)
+	}
+	if got, want := svc.AssaySummary("tenant-b"), "0/1 assays pass"; got != want {
+		t.Fatalf("tenant-b summary=%q want %q (assays leaked across tenants)", got, want)
+	}
+}
+
 func TestEnergyReadingsWithSameLotIDStayInTenant(t *testing.T) {
 	opA, opB, _ := boundaryPrincipals()
 	svc := NewEnergyService()
