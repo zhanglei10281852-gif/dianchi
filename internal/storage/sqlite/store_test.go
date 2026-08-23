@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -93,6 +94,27 @@ func TestAuditAndOutboxWrites(t *testing.T) {
 	}
 	if err = s.MarkOutbox(ctx, id, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+func TestTransactionRollbackOnCallbackError(t *testing.T) {
+	s := storeFixture(t)
+	defer s.Close()
+	ctx := context.Background()
+	l := battery.Lot{ID: "l1", TenantID: "t", Code: "c", Chemistry: "LFP", State: battery.Received, Version: 1, ReceivedAt: time.Now().UTC(), CreatedBy: "u"}
+	boom := errors.New("audit write failed")
+	if err := s.WithTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if err := s.InsertLot(ctx, tx, l); err != nil {
+			return err
+		}
+		return boom
+	}); !errors.Is(err, boom) {
+		t.Fatalf("err=%v want=%v", err, boom)
+	}
+	if _, err := s.GetLot(ctx, nil, "l1", "t"); err == nil {
+		t.Fatal("lot committed despite callback failure")
+	}
+	if err := s.WithTx(ctx, func(ctx context.Context, tx *sql.Tx) error { return s.InsertLot(ctx, tx, l) }); err != nil {
+		t.Fatalf("retry after rollback failed: %v", err)
 	}
 }
 func TestSessionLifecycle(t *testing.T) {

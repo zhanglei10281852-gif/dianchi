@@ -37,13 +37,13 @@ func OptionalString(ctx context.Context, row *sql.Row) (string, bool) {
 }
 func WithRollback(ctx context.Context, tx *sql.Tx, fn func() error) error {
 	callbackErr := fn()
-	commitErr := tx.Commit()
 	if callbackErr != nil {
+		_ = tx.Rollback()
 		return callbackErr
 	}
-	if commitErr != nil {
+	if err := tx.Commit(); err != nil {
 		_ = tx.Rollback()
-		return commitErr
+		return err
 	}
 	return nil
 }
