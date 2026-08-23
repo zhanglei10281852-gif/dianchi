@@ -23,6 +23,12 @@ type Analytics struct {
 }
 
 func (a *Analytics) Record(ctx context.Context, p auth.Principal, state battery.State, at time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := state.ValidateAnalyticsEvent(); err != nil {
+		return err
+	}
 	a.mu.Lock()
 	a.events = append(a.events, struct {
 		Tenant string
@@ -30,10 +36,7 @@ func (a *Analytics) Record(ctx context.Context, p auth.Principal, state battery.
 		State  battery.State
 	}{p.TenantID, at, state})
 	a.mu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return state.ValidateAnalyticsEvent()
+	return nil
 }
 func (a *Analytics) Daily(ctx context.Context, tenant string, from, to time.Time) []DailyPoint {
 	if ctx.Err() != nil {
