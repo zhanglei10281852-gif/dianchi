@@ -73,12 +73,11 @@ func (t *TransportService) AddStop(ctx context.Context, p auth.Principal, id str
 		return apperr.New(apperr.Conflict, "trip already loading")
 	}
 	s.TripID = id
-	current := v
-	v.Stops = append(v.Stops, s)
-	t.trips[key] = v
-	if err := transport.ValidateAddition(current, s); err != nil {
+	if err := transport.ValidateAddition(v, s); err != nil {
 		return apperr.Wrap(apperr.Invalid, "stop", err)
 	}
+	v.Stops = append(v.Stops, s)
+	t.trips[key] = v
 	return nil
 }
 func (t *TransportService) Move(ctx context.Context, p auth.Principal, id string, target transport.Status) error {
