@@ -68,7 +68,10 @@ func (s *SafetyService) Open(p auth.Principal, lotID string) []safety.Finding {
 func (s *SafetyService) Checklist(p auth.Principal, lotID string) safety.Checklist {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return safety.Checklist{ID: token(), LotID: lotID, InspectorID: p.ID, Findings: s.findings[safetyKey(p.TenantID, lotID)]}
+	stored := s.findings[safetyKey(p.TenantID, lotID)]
+	out := make([]safety.Finding, len(stored))
+	copy(out, stored)
+	return safety.Checklist{ID: token(), LotID: lotID, InspectorID: p.ID, Findings: out}
 }
 
 func safetyKey(tenant, lot string) string { return tenant + "\x00" + lot }
