@@ -49,7 +49,12 @@ type principalHandler func(http.ResponseWriter, *http.Request, auth.Principal)
 
 func (h *Server) withPrincipal(fn principalHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		p, err := h.Auth.Principal(r.Context(), strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer")))
+		token, err := Bearer(r)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		p, err := h.Auth.Principal(r.Context(), token)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -71,7 +76,12 @@ func (h *Server) login(w http.ResponseWriter, r *http.Request) {
 	write(w, 200, map[string]any{"token": token, "operator": p})
 }
 func (h *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if err := h.Auth.Logout(r.Context(), strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")); err != nil {
+	token, err := Bearer(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.Auth.Logout(r.Context(), token); err != nil {
 		writeErr(w, err)
 		return
 	}

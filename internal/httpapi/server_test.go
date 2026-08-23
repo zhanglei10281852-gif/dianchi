@@ -92,3 +92,31 @@ func TestInvalidPayloadReturnsBadRequest(t *testing.T) {
 		t.Fatalf("code=%d", w.Code)
 	}
 }
+func TestMalformedBearerRejected(t *testing.T) {
+	h, close := httpFixture(t)
+	defer close()
+	// A real session token, but the Authorization header omits the required
+	// "Bearer " scheme/separator grammar. Authentication must fail.
+	w := request(t, h.Handler(), http.MethodPost, "/v1/auth/login", map[string]string{"Tenant": "t", "Name": "op", "Password": "pw"}, "")
+	if w.Code != 200 {
+		t.Fatalf("login=%d %s", w.Code, w.Body.String())
+	}
+	var out struct{ Token string }
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || out.Token == "" {
+		t.Fatal(w.Body.String())
+	}
+	for _, header := range []string{
+		"Bearer" + out.Token,        // no separator
+		"Bearer" + out.Token + " ",  // trailing separator only
+		"bearer " + out.Token,      // wrong scheme case
+		out.Token,                  // bare token, no scheme
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/v1/lots", nil)
+		r.Header.Set("Authorization", header)
+		rw := httptest.NewRecorder()
+		h.Handler().ServeHTTP(rw, r)
+		if rw.Code != 401 {
+			t.Fatalf("header %q: expected 401, got %d %s", header, rw.Code, rw.Body.String())
+		}
+	}
+}
