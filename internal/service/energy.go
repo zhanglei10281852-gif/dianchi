@@ -54,11 +54,9 @@ func (e *EnergyService) Between(ctx context.Context, p auth.Principal, lot strin
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	out := make([]energy.Reading, 0)
-	for _, rows := range e.readings {
-		for _, r := range rows {
-			if r.LotID == lot && !r.At.Before(start) && r.At.Before(end) {
-				out = append(out, r)
-			}
+	for _, r := range e.readings[energyKey(p.TenantID, lot)] {
+		if !r.At.Before(start) && r.At.Before(end) {
+			out = append(out, r)
 		}
 	}
 	return out
