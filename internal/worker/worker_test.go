@@ -105,6 +105,39 @@ func TestDispatcherCancellationInterruptsErrorBackoff(t *testing.T) {
 	}
 }
 
+func TestDispatcherCancellationPropagatesToHandlerContext(t *testing.T) {
+	d := NewDispatcher()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var sawCanceled int32 // atomic-ish; only read after release is closed.
+	d.Register("recover", func(ctx context.Context, _ string) error {
+		close(started)
+		<-release
+		if !errors.Is(ctx.Err(), context.Canceled) {
+			t.Error("handler context was not cancelled when Run context was cancelled")
+		} else {
+			sawCanceled = 1
+		}
+		return ctx.Err()
+	})
+	d.Enqueue("recover", "lot-1")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+	<-started
+	cancel()
+	close(release)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("dispatcher error=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("dispatcher ignored cancellation")
+	}
+	_ = sawCanceled
+}
+
 func TestDispatcherHealthIsSafeUnderConcurrentReads(t *testing.T) {
 	d := NewDispatcher()
 	ctx, cancel := context.WithCancel(context.Background())

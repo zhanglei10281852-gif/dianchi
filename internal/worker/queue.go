@@ -15,8 +15,16 @@ type Queue[T any] struct {
 func NewQueue[T any]() *Queue[T] {
 	return &Queue[T]{items: make([]T, 0), notify: make(chan struct{}, 1)}
 }
+// HandlerContext derives the context passed to a registered handler.
+// It must propagate cancellation from the dispatcher's Run context so that
+// when the outer Run is cancelled (e.g. shutdown while a handler is invoking
+// a downstream publisher), the handler observes ctx.Done and aborts its writes
+// instead of continuing with a context that never expires.
 func HandlerContext(ctx context.Context) context.Context {
-	return context.WithoutCancel(ctx)
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 func (q *Queue[T]) Push(v T) bool {
