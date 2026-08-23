@@ -136,3 +136,33 @@ func TestSafetyAndQuarantineUseTenantQualifiedKeys(t *testing.T) {
 		t.Fatal("quarantine record leaked to tenant B")
 	}
 }
+
+func TestQuarantineExpiryRemovesAssociatedNotes(t *testing.T) {
+	opA, _, supA := boundaryPrincipals()
+	quarantine := NewQuarantine()
+	original := battery.Lot{ID: "shared", TenantID: "forged", State: battery.Quarantined, ReceivedAt: time.Now().Add(-2 * time.Hour)}
+	if err := quarantine.Hold(context.Background(), opA, original, "old hold note"); err != nil {
+		t.Fatal(err)
+	}
+	if n := quarantine.Expire(time.Now().Add(-time.Hour)); n != 1 {
+		t.Fatalf("expired=%d", n)
+	}
+	_, _, ok := quarantine.Get(opA, original.ID)
+	if ok {
+		t.Fatal("expired lot still held")
+	}
+	reopened := battery.Lot{ID: "shared", TenantID: "forged", State: battery.Quarantined, ReceivedAt: time.Now()}
+	if err := quarantine.Hold(context.Background(), opA, reopened, "new evidence note"); err != nil {
+		t.Fatal(err)
+	}
+	_, notes, ok := quarantine.Get(opA, reopened.ID)
+	if !ok {
+		t.Fatal("reopened lot missing")
+	}
+	if len(notes) != 1 || notes[0] != "new evidence note" {
+		t.Fatalf("stale notes resurfaced after expiry: %v", notes)
+	}
+	if err := quarantine.Release(context.Background(), supA, reopened.ID); err != nil {
+		t.Fatal(err)
+	}
+}

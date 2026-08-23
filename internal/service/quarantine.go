@@ -69,9 +69,10 @@ func (q *Quarantine) Expire(before time.Time) int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	n := 0
-	for id, l := range q.items {
-		if l.ReceivedAt.Before(before) {
+	for id := range q.items {
+		if q.items[id].ReceivedAt.Before(before) {
 			delete(q.items, id)
+			delete(q.notes, id)
 			n++
 		}
 	}
