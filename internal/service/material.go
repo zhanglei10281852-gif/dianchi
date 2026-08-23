@@ -57,17 +57,13 @@ func (m *MaterialService) AddAssay(ctx context.Context, p auth.Principal, a mate
 		return apperr.New(apperr.Forbidden, "role cannot assay")
 	}
 	a.TenantID = p.TenantID
-	m.mu.Lock()
-	m.assays[a.RecoveryID] = append(m.assays[a.RecoveryID], a)
-	index := len(m.assays[a.RecoveryID]) - 1
-	m.mu.Unlock()
 	prepared, err := material.PrepareAssay(a)
 	if err != nil {
 		return apperr.Wrap(apperr.Invalid, "assay", err)
 	}
 	m.mu.Lock()
-	m.assays[a.RecoveryID][index] = prepared
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	m.assays[a.RecoveryID] = append(m.assays[a.RecoveryID], prepared)
 	return nil
 }
 func (m *MaterialService) List(ctx context.Context, tenant string, kind material.Kind) []material.Lot {

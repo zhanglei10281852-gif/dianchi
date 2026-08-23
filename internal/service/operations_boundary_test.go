@@ -62,6 +62,27 @@ func TestMaterialFailedReservationDoesNotConsumeInventory(t *testing.T) {
 	}
 }
 
+func TestAssaySummaryExcludesInvalidAssay(t *testing.T) {
+	op, _, _ := boundaryPrincipals()
+	svc := NewMaterialService()
+	recoveryID := "rec-1"
+	if err := svc.AddAssay(context.Background(), op, material.Assay{
+		ID: "assay-ok", RecoveryID: recoveryID, Kind: material.Lithium,
+		PurityPPM: 990000, MoisturePPM: 50, AssayedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddAssay(context.Background(), op, material.Assay{
+		ID: "assay-bad", RecoveryID: recoveryID, Kind: material.Lithium,
+		PurityPPM: -1, MoisturePPM: 10, AssayedAt: time.Now(),
+	}); err == nil {
+		t.Fatal("invalid assay accepted")
+	}
+	if got := svc.AssaySummary(op.TenantID); got != "1/1 assays pass" {
+		t.Fatalf("invalid assay counted in summary: %q", got)
+	}
+}
+
 func TestEnergyReadingsWithSameLotIDStayInTenant(t *testing.T) {
 	opA, opB, _ := boundaryPrincipals()
 	svc := NewEnergyService()
