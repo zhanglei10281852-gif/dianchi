@@ -53,8 +53,12 @@ func (s *Scheduler) runDue(ctx context.Context, now time.Time) {
 	}
 	s.mu.Unlock()
 	for _, j := range jobs {
-		jobCtx := JobContext(ctx)
+		// lifecycle ties each job's execution context to the scheduler shutdown
+		// so a running job receives the Done signal even while the Run loop is
+		// blocked here inside runDue and unable to service ctx.Done()/s.done.
+		jobCtx, cancel := s.lifecycle(ctx)
 		err := j.Run(jobCtx)
+		cancel()
 		s.mu.Lock()
 		current, stillScheduled := s.jobs[j.ID]
 		if !stillScheduled || current.Attempts != j.Attempts || !current.Next.Equal(j.Next) {
@@ -71,7 +75,24 @@ func (s *Scheduler) runDue(ctx context.Context, now time.Time) {
 		s.mu.Unlock()
 	}
 }
+// lifecycle derives a job execution context that is cancelled when either the
+// caller's context is cancelled (process/parent shutdown) or the scheduler is
+// stopped via Stop. The watcher goroutine propagates cancellation to the job
+// without relying on Run's select loop, which is blocked while the job runs.
+func (s *Scheduler) lifecycle(ctx context.Context) (context.Context, context.CancelFunc) {
+	jobCtx, cancel := context.WithCancel(ctx)
+	go func(done <-chan struct{}) {
+		select {
+		case <-done:
+		case <-jobCtx.Done():
+		}
+		cancel()
+	}(s.done)
+	return jobCtx, cancel
+}
 func (s *Scheduler) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	select {
 	case <-s.done:
 	default:

@@ -82,6 +82,74 @@ func TestSchedulerCancellationDuringRunDoesNotResurrectJob(t *testing.T) {
 	}
 }
 
+func TestSchedulerStopSignalsRunningJob(t *testing.T) {
+	s := NewScheduler()
+	started := make(chan struct{})
+	sawDone := make(chan struct{})
+	if err := s.Add(Job{ID: "reclaim", Run: func(ctx context.Context) error {
+		close(started)
+		select {
+		case <-ctx.Done():
+			close(sawDone)
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+			t.Error("job did not observe shutdown")
+		}
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	runDone := make(chan error, 1)
+	go func() { runDone <- s.Run(context.Background(), 10*time.Millisecond) }()
+	<-started
+	// Stop while a job is running: the Run loop is blocked inside runDue, so
+	// the job must be cancelled via the lifecycle context, not the select loop.
+	s.Stop()
+	select {
+	case <-sawDone:
+	case <-time.After(time.Second):
+		t.Fatal("running job did not observe shutdown")
+	}
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("Run returned %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run did not return after Stop")
+	}
+}
+
+func TestSchedulerParentContextSignalsRunningJob(t *testing.T) {
+	s := NewScheduler()
+	started := make(chan struct{})
+	sawDone := make(chan struct{})
+	if err := s.Add(Job{ID: "reclaim", Run: func(ctx context.Context) error {
+		close(started)
+		select {
+		case <-ctx.Done():
+			close(sawDone)
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+			t.Error("job did not observe shutdown")
+		}
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	runDone := make(chan error, 1)
+	go func() { runDone <- s.Run(ctx, 10*time.Millisecond) }()
+	<-started
+	cancel()
+	select {
+	case <-sawDone:
+	case <-time.After(time.Second):
+		t.Fatal("running job did not observe parent cancellation")
+	}
+	<-runDone
+}
+
 func TestDispatcherCancellationInterruptsErrorBackoff(t *testing.T) {
 	d := NewDispatcher()
 	called := make(chan struct{})

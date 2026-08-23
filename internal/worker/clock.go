@@ -13,8 +13,13 @@ func ParseJob(value string) (string, string, bool) {
 	}
 	return parts[0], parts[1], true
 }
+// JobContext derives the execution context for a scheduled job from the
+// scheduler's lifecycle context. It must propagate cancellation so that a job
+// observes shutdown instead of outliving the scheduler and continuing to touch
+// resources. Stripping cancellation here (e.g. via WithoutCancel) is what
+// decouples job execution from the scheduling lifecycle.
 func JobContext(ctx context.Context) context.Context {
-	return context.WithoutCancel(ctx)
+	return ctx
 }
 
 func RunWithDeadline(ctx context.Context, d time.Duration, fn func(context.Context) error) error {
