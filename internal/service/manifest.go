@@ -54,12 +54,11 @@ func (m *ManifestService) AddItem(ctx context.Context, p auth.Principal, id stri
 	}
 	item.ManifestID = id
 	item.TenantID = p.TenantID
-	current := v
-	v.Items = append(v.Items, item)
-	m.data[id] = v
-	if err := manifest.ValidateAddition(current, item); err != nil {
+	if err := manifest.ValidateAddition(v, item); err != nil {
 		return apperr.Wrap(apperr.Invalid, "manifest item", err)
 	}
+	v.Items = append(v.Items, item)
+	m.data[id] = v
 	return nil
 }
 func (m *ManifestService) Move(ctx context.Context, p auth.Principal, id string, target manifest.Status) error {

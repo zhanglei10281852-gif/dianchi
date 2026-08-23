@@ -111,6 +111,30 @@ func TestManifestAndOperatorInputsAreCopied(t *testing.T) {
 	}
 }
 
+func TestManifestFailedAddItemDoesNotPolluteList(t *testing.T) {
+	op, _, _ := boundaryPrincipals()
+	manifests := NewManifestService()
+	v := manifest.Manifest{ID: "manifest-fail", TenantID: "forged", Origin: "A", Destination: "B"}
+	if err := manifests.Create(context.Background(), op, v); err != nil {
+		t.Fatal(err)
+	}
+	bad := manifest.Item{ID: "item-1", LotID: "lot-1", Weight: -5, HazardClass: "UN3481"}
+	if err := manifests.AddItem(context.Background(), op, v.ID, bad); err == nil {
+		t.Fatal("negative weight item accepted")
+	}
+	got, err := manifests.Get(context.Background(), op, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != 0 {
+		t.Fatalf("failed add leaked into manifest: %+v", got.Items)
+	}
+	fixed := manifest.Item{ID: "item-1", LotID: "lot-1", Weight: 5, HazardClass: "UN3481"}
+	if err := manifests.AddItem(context.Background(), op, v.ID, fixed); err != nil {
+		t.Fatalf("re-add after failed add rejected: %v", err)
+	}
+}
+
 func TestSafetyAndQuarantineUseTenantQualifiedKeys(t *testing.T) {
 	opA, opB, supA := boundaryPrincipals()
 	svc := NewSafetyService()
