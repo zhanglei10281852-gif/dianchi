@@ -22,11 +22,6 @@ type PolicyService struct {
 
 func NewPolicyService() *PolicyService { return &PolicyService{policies: map[string]Policy{}} }
 func (p *PolicyService) Set(ctx context.Context, principal auth.Principal, v Policy) error {
-	candidate := v
-	candidate.AllowedChemistries = copyMap(v.AllowedChemistries)
-	p.mu.Lock()
-	p.policies[principal.TenantID] = candidate
-	p.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -39,6 +34,11 @@ func (p *PolicyService) Set(ctx context.Context, principal auth.Principal, v Pol
 	if v.ExpiryGrace < 0 {
 		return apperr.Invalidf("expiry grace invalid")
 	}
+	candidate := v
+	candidate.AllowedChemistries = copyMap(v.AllowedChemistries)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.policies[principal.TenantID] = candidate
 	return nil
 }
 func (p *PolicyService) Get(tenant string) Policy {
