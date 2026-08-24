@@ -37,6 +37,12 @@ func (s *SafetyService) Record(ctx context.Context, p auth.Principal, f safety.F
 	return nil
 }
 func (s *SafetyService) Resolve(ctx context.Context, p auth.Principal, lotID, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !p.Can("certify") {
+		return apperr.New(apperr.Forbidden, "supervisor required")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := safetyKey(p.TenantID, lotID)
@@ -50,10 +56,11 @@ func (s *SafetyService) Resolve(ctx context.Context, p auth.Principal, lotID, id
 		}
 		s.findings[key][i] = resolved
 		if err := ctx.Err(); err != nil {
+			// The request was cancelled after we entered the critical section.
+			// Roll back the in-memory resolution so the finding stays open and
+			// remains visible in the open-issue list, matching the returned error.
+			s.findings[key][i] = f
 			return err
-		}
-		if !p.Can("certify") {
-			return apperr.New(apperr.Forbidden, "supervisor required")
 		}
 		return nil
 	}

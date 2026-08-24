@@ -136,3 +136,20 @@ func TestSafetyAndQuarantineUseTenantQualifiedKeys(t *testing.T) {
 		t.Fatal("quarantine record leaked to tenant B")
 	}
 }
+
+func TestSafetyResolveCancelledLeavesFindingOpen(t *testing.T) {
+	opA, _, supA := boundaryPrincipals()
+	svc := NewSafetyService()
+	finding := safety.Finding{ID: "heat-1", LotID: "lot-1", Code: "heat", Description: "temperature", Measured: 80, Limit: 60}
+	if err := svc.Record(context.Background(), opA, finding); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := svc.Resolve(ctx, supA, "lot-1", "heat-1"); err == nil {
+		t.Fatal("cancelled resolve succeeded")
+	}
+	if opens := svc.Open(opA, "lot-1"); len(opens) != 1 {
+		t.Fatalf("cancelled resolve cleared finding: opens=%d", len(opens))
+	}
+}
