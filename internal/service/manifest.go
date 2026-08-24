@@ -100,10 +100,14 @@ func (m *ManifestService) Pending(tenant string) []manifest.Manifest {
 	defer m.mu.RUnlock()
 	out := make([]manifest.Manifest, 0)
 	for _, v := range m.data {
-		if v.TenantID == tenant && v.Status != manifest.Cancelled {
-			v.Items = append([]manifest.Item(nil), v.Items...)
-			out = append(out, v)
+		if v.TenantID != tenant {
+			continue
 		}
+		if v.Status == manifest.Received || v.Status == manifest.Cancelled {
+			continue
+		}
+		v.Items = append([]manifest.Item(nil), v.Items...)
+		out = append(out, v)
 	}
 	return out
 }
