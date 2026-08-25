@@ -207,8 +207,7 @@ func (s *Service) List(ctx context.Context, p auth.Principal, q pagination.Query
 	if !p.Can("intake") {
 		return pagination.Result[battery.Lot]{}, apperr.New(apperr.Forbidden, "role cannot list lots")
 	}
-	queryCtx := repository.QueryContext(ctx)
-	return s.Store.ListLots(queryCtx, p.TenantID, q)
+	return s.Store.ListLots(ctx, p.TenantID, q)
 }
 func (s *Service) writeAudit(ctx context.Context, tx *sql.Tx, p auth.Principal, obj, action, result, requestID string) error {
 	e := audit.Event{ID: token(), TenantID: p.TenantID, ActorID: p.ID, ObjectType: "lot", ObjectID: obj, Action: action, Result: result, RequestID: requestID, Payload: "{}", CreatedAt: s.Clock.Now()}

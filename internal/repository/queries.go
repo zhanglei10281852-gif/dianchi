@@ -6,10 +6,6 @@ import (
 	"fmt"
 )
 
-func QueryContext(ctx context.Context) context.Context {
-	return context.WithoutCancel(ctx)
-}
-
 type Query struct {
 	SQL  string
 	Args []any
