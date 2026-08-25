@@ -49,13 +49,24 @@ type principalHandler func(http.ResponseWriter, *http.Request, auth.Principal)
 
 func (h *Server) withPrincipal(fn principalHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		operationCtx := middleware.OperationContext(r.Context())
-		p, err := h.Auth.Principal(operationCtx, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		// Authentication resolves the bearer token into a principal. It must
+		// survive a client disconnect: a mobile client that cancels the HTTP
+		// context mid-flight should not abort session lookup, and a transient
+		// network blip during auth must not surface as a 401. Use a
+		// cancellation-detached context only for this step.
+		authCtx := middleware.OperationContext(r.Context())
+		p, err := h.Auth.Principal(authCtx, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		fn(w, r.WithContext(operationCtx), p)
+		// The business call chain, however, must remain bound to the request's
+		// cancellation: if the client disconnected before the operation
+		// committed, the service layer observes the canceled context and stops
+		// creating the batch instead of silently completing it (which a network
+		// retry would then duplicate). r.Context() still carries the request id
+		// injected by RequestContext.
+		fn(w, r, p)
 	}
 }
 func (h *Server) login(w http.ResponseWriter, r *http.Request) {
